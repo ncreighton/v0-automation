@@ -1,0 +1,271 @@
+{
+  "name": "v0 Component Generator",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Configuration\nconst DESIGN_PACKAGE_PATH = $input.first().json.packagePath || '/path/to/design-package';\nconst PROMPTS_DIR = 'design-reference/v0-prompts';\n\n// Component mapping\nconst COMPONENT_MAP = {\n  'hero.md': 'Hero',\n  'navigation.md': 'Navigation',\n  'cards.md': 'ArticleCards',\n  'newsletter.md': 'Newsletter',\n  'footer.md': 'Footer'\n};\n\n// Read prompt files from directory\nconst fs = require('fs');\nconst path = require('path');\n\nconst promptsPath = path.join(DESIGN_PACKAGE_PATH, PROMPTS_DIR);\nconst files = fs.readdirSync(promptsPath).filter(f => f.endsWith('.md'));\n\nconst prompts = files.map(file => {\n  const content = fs.readFileSync(path.join(promptsPath, file), 'utf-8');\n  const parts = content.split('---');\n  const prompt = parts.length > 1 ? parts.slice(1).join('---').trim() : content.trim();\n  \n  return {\n    filename: file,\n    componentName: COMPONENT_MAP[file] || file.replace('.md', '').replace(/-/g, ''),\n    prompt: prompt,\n    packagePath: DESIGN_PACKAGE_PATH\n  };\n});\n\nreturn prompts.map(p => ({ json: p }));"
+      },
+      "id": "load-prompts",
+      "name": "Load Prompt Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.v0.dev/v1/chats",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"{{ $json.prompt }}\",\n  \"system\": \"You are an expert React developer. Generate clean, production-ready components with Tailwind CSS and Lucide React icons. Export as default.\"\n}",
+        "options": {}
+      },
+      "id": "v0-api",
+      "name": "v0 API - Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "v0-api-key",
+          "name": "v0 API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract component file from v0 response\nconst response = $input.first().json;\nconst files = response.files || [];\n\n// Find the main component file\nconst componentFile = files.find(f => \n  f.name.endsWith('.tsx') || \n  f.name.endsWith('.jsx') ||\n  f.name === 'page.tsx'\n);\n\nif (!componentFile) {\n  return [{\n    json: {\n      success: false,\n      componentName: $('Load Prompt Files').first().json.componentName,\n      error: 'No component file in response',\n      chatUrl: response.webUrl,\n      demoUrl: response.demo\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    success: true,\n    componentName: $('Load Prompt Files').first().json.componentName,\n    filename: `${$('Load Prompt Files').first().json.componentName}.tsx`,\n    content: componentFile.content,\n    chatUrl: response.webUrl,\n    demoUrl: response.demo,\n    packagePath: $('Load Prompt Files').first().json.packagePath\n  }\n}];"
+      },
+      "id": "extract-code",
+      "name": "Extract Component Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "success-check",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-success",
+      "name": "Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Save component file\nconst fs = require('fs');\nconst path = require('path');\n\nconst data = $input.first().json;\nconst outputDir = path.join(data.packagePath, 'design-reference/v0-components');\n\n// Ensure directory exists\nif (!fs.existsSync(outputDir)) {\n  fs.mkdirSync(outputDir, { recursive: true });\n}\n\n// Write component file\nconst outputPath = path.join(outputDir, data.filename);\nfs.writeFileSync(outputPath, data.content);\n\nreturn [{\n  json: {\n    ...data,\n    saved: true,\n    outputPath: outputPath\n  }\n}];"
+      },
+      "id": "save-file",
+      "name": "Save Component File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log failed generation\nconst data = $input.first().json;\nconsole.log(`Failed to generate ${data.componentName}: ${data.error}`);\n\nreturn [{ json: data }];"
+      },
+      "id": "log-failure",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "results",
+        "include": "allFieldsExcept",
+        "fieldsToExclude": "content",
+        "options": {}
+      },
+      "id": "aggregate",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate manifest\nconst results = $input.first().json.results;\nconst fs = require('fs');\nconst path = require('path');\n\nconst manifest = {\n  generated: new Date().toISOString(),\n  totalComponents: results.length,\n  successful: results.filter(r => r.success).length,\n  failed: results.filter(r => !r.success).length,\n  components: results.map(r => ({\n    name: r.componentName,\n    success: r.success,\n    filename: r.filename || null,\n    chatUrl: r.chatUrl || null,\n    demoUrl: r.demoUrl || null,\n    error: r.error || null\n  }))\n};\n\n// Get package path from first result\nconst packagePath = results[0]?.packagePath;\nif (packagePath) {\n  const manifestPath = path.join(packagePath, 'design-reference/v0-components/manifest.json');\n  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));\n  manifest.manifestPath = manifestPath;\n}\n\nreturn [{ json: manifest }];"
+      },
+      "id": "create-manifest",
+      "name": "Create Manifest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "wait",
+      "name": "Rate Limit Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [680, 460],
+      "webhookId": "rate-limit-wait"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Prompt Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Prompt Files": {
+      "main": [
+        [
+          {
+            "node": "v0 API - Generate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "v0 API - Generate": {
+      "main": [
+        [
+          {
+            "node": "Extract Component Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Component Code": {
+      "main": [
+        [
+          {
+            "node": "Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Success?": {
+      "main": [
+        [
+          {
+            "node": "Save Component File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Component File": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Failure": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Create Manifest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "v0-automation"
+  },
+  "tags": [
+    {
+      "name": "automation",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "v0",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "design-pipeline",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z"
+    }
+  ]
+}
