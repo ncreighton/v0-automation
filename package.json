@@ -1,0 +1,35 @@
+{
+  "name": "v0-automation",
+  "version": "1.0.0",
+  "description": "Automates v0.dev component generation for the Visual-to-Code Pipeline",
+  "type": "module",
+  "main": "scripts/generate-components.js",
+  "bin": {
+    "v0-generate": "./scripts/generate-components.js"
+  },
+  "scripts": {
+    "generate": "node scripts/generate-components.js",
+    "generate:single": "node scripts/generate-components.js --single",
+    "test": "echo \"No tests yet\""
+  },
+  "keywords": [
+    "v0",
+    "vercel",
+    "design-to-code",
+    "automation",
+    "react",
+    "components"
+  ],
+  "author": "Nick Creighton",
+  "license": "MIT",
+  "dependencies": {
+    "v0-sdk": "^0.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ncreighton/v0-automation"
+  }
+}
